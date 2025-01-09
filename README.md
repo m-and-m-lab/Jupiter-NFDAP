@@ -1,5 +1,8 @@
 
 ## Environment
+
+Run the following to create the UNSB environment 
+
 ```
 $ conda create -n UNSB python=3.8
 $ conda activate UNSB
@@ -23,16 +26,38 @@ python train.py --dataroot ./datasets/EZ_complete_data --name EZ_test \
 ```
 Thre are several training parameters available in the codebase which you can change during training arguments. some of the important ones I have listed below - 
 ```
---dataset_mode, default='unaligned', chooses how datasets are loaded. [unaligned | aligned | single | colorization]
---serial_batches, if true, takes images in order to make batches, otherwise takes them randomly
---input_nc, default=3, # of input image channels: 3 for RGB and 1 for grayscale
---netD, default='basic_cond', choices=['basic', 'n_layers', 'pixel', 'patch', 'tilestylegan2', 'stylegan2'], specify discriminator architecture. The basic model is a 70x70 PatchGAN. n_layers specifies the layers in the discriminator
---netG, default='resnet_9blocks_cond', choices=['resnet_9blocks', 'resnet_6blocks', 'unet_256', 'unet_128', 'stylegan2', 'smallstylegan2', 'resnet_cat'], specify generator architecture
+--dataset_mode
+default='unaligned', chooses how datasets are loaded. [unaligned | aligned | single | colorization]
+
+--serial_batches
+if true, takes images in order to make batches, otherwise takes them randomly
+
+--input_nc
+default=3, # of input image channels: 3 for RGB and 1 for grayscale
+
+--netD
+default='basic_cond', choices=['basic', 'n_layers', 'pixel', 'patch', 'tilestylegan2', 'stylegan2'], specify discriminator architecture. The basic model is a 70x70 PatchGAN. n_layers specifies the layers in the discriminator
+
+--netG
+default='resnet_9blocks_cond', choices=['resnet_9blocks', 'resnet_6blocks', 'unet_256', 'unet_128', 'stylegan2', 'smallstylegan2', 'resnet_cat'], specify generator architecture
 ```
-Although the training is available with arbitrary batch size, we recommend to use batch size = 1
+
+Some of the important train options are listed below - 
+```
+--n_epochs
+default=200, number of epochs with the initial learning rate
+
+--n_epochs_decay
+default=200, number of epochs to linearly decay learning rate to zero
+
+--gan_mode
+default='lsgan', the type of GAN objective. [vanilla| lsgan | wgangp]. vanilla GAN loss is the CE objective
+```
+
+Although the training is available with arbitrary batch size, the recommended batch size is 1
 
 ## Test & Evaluation
-Refer the ```./run_test.sh``` file or 
+Run the following command to test the model on the test dataset 
 
 ```
 python test.py --dataroot [path-to-dataset] --name [experiment-name] --mode sb \
@@ -44,7 +69,7 @@ The outputs will be saved in ```./results/[experiment-name]/```
 
 Folders named as ```fake_[num_NFE]``` represent the generated outputs with different NFE steps.
 
-For evaluation, we use official module of [pytorch-fid](https://github.com/mseitzer/pytorch-fid)
+For evaluation, they use official module of [pytorch-fid](https://github.com/mseitzer/pytorch-fid)
 
 ```
 python -m pytorch_fid [output-path] [real-path]
@@ -52,25 +77,9 @@ python -m pytorch_fid [output-path] [real-path]
 
 ```real-path``` should be test images of target domain. 
 
-For testing on our vgg-based trained model, 
+For testing on vgg-based trained model, 
 
 Refer the ```./vgg_sb/scripts/test_sc_main.sh``` file 
 
 The pre-trained checkpoints are provided [here](https://drive.google.com/drive/folders/1Q8tuBGegMMHd9PzvcklDm0wM1sE4PPwK?usp=sharing)
 
-## References
-
-If you find this paper useful for your research, please consider citing
-```bib
-@InProceedings{
-  kim2023unsb,
-  title={Unpaired Image-to-Image Translation via Neural Schrödinger Bridge},
-  author={Beomsu Kim and Gihyun Kwon and Kwanyoung Kim and Jong Chul Ye},
-  booktitle={ICLR},
-  year={2024}
-}
-```
-### Acknowledgement
-Our source code is based on [CUT](https://github.com/taesungp/contrastive-unpaired-translation). \
-We thank [pytorch-fid](https://github.com/mseitzer/pytorch-fid) for FID calculation. \
-We modified the network based on the implementation of [DDGAN](https://github.com/NVlabs/denoising-diffusion-gan).
