@@ -402,6 +402,45 @@ class ResnetGenerator_ncsn(nn.Module):
                 out = layer(out,time_embed,z_embed)
             out = self.model_upsample(out)
             return out
+
+class TransformerGeneratorCond(nn.Module):
+    def __init__(self, input_nc, output_nc, ngf=64, embed_dim=256, num_heads=8, ff_dim=512, n_blocks=9, temb_dim=256, z_dim=256):
+        super().__init__()
+        # Patch Embedding
+        self.patch_embed = nn.Conv2d(input_nc, embed_dim, kernel_size=7, stride=1, padding=3)
+        self.positional_encoding = nn.Parameter(torch.zeros(1, embed_dim, embed_dim))
+
+        # Transformer Blocks
+        self.transformer_blocks = nn.ModuleList([
+            TransformerBlockCond(embed_dim, num_heads, ff_dim, temb_dim, z_dim) for _ in range(n_blocks)
+        ])
+
+        # Upsampling
+        self.upsample = nn.Sequential(
+            nn.Conv2d(embed_dim, ngf, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(ngf, output_nc, kernel_size=7, padding=3),
+            nn.Tanh()
+        )
+
+    def forward(self, x, time_cond, z):
+        # Patch Embedding
+        x = self.patch_embed(x)
+        x = x + self.positional_encoding
+
+        # Time and Latent Embeddings
+        temb = get_timestep_embedding(time_cond, self.ngf)
+        time_embed = self.time_embed(temb)
+        z_embed = self.z_transform(z)
+
+        # Transformer Blocks
+        for block in self.transformer_blocks:
+            x = block(x, time_embed, z_embed)
+
+        # Upsample
+        x = self.upsample(x)
+        return x
+
 ##################################################################################
 # Basic Blocks
 ##################################################################################
@@ -544,6 +583,70 @@ class ResnetBlock_cond(nn.Module):
         """Forward function (with skip connections)"""
         out = x + out  # add skip connections
         return out
+
+
+    def __init__(self, embed_dim, num_heads, ff_dim, dropout=0.1):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout)
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_dim, ff_dim),
+            nn.ReLU(),
+            nn.Linear(ff_dim, embed_dim)
+        )
+        self.layernorm1 = nn.LayerNorm(embed_dim)
+        self.layernorm2 = nn.LayerNorm(embed_dim)
+
+        # Conditioning layers
+        self.time_cond = nn.Linear(embed_dim, embed_dim)
+        self.latent_cond = nn.Linear(embed_dim, embed_dim)
+
+    def forward(self, x, time_emb, latent_emb):
+        # Add conditioning
+        x = x + self.time_cond(time_emb).unsqueeze(1)
+        x = x + self.latent_cond(latent_emb).unsqueeze(1)
+
+        # Self-Attention
+        attn_output, _ = self.attn(x, x, x)
+        x = self.layernorm1(x + attn_output)
+
+        # Feed-Forward Network
+        ffn_output = self.ffn(x)
+        x = self.layernorm2(x + ffn_output)
+
+        return x
+
+class TransformerBlockCond(nn.Module):
+    def __init__(self, embed_dim, num_heads, ff_dim, temb_dim, z_dim, dropout=0.1):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout)
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_dim, ff_dim),
+            nn.ReLU(),
+            nn.Linear(ff_dim, embed_dim)
+        )
+        self.layernorm1 = nn.LayerNorm(embed_dim)
+        self.layernorm2 = nn.LayerNorm(embed_dim)
+
+        # Time and Latent Conditioning
+        self.time_dense = nn.Linear(temb_dim, embed_dim)
+        self.latent_dense = nn.Linear(z_dim, embed_dim)
+
+    def forward(self, x, time_embed, z_embed):
+        # Add time and latent embeddings
+        time_embed = self.time_dense(time_embed).unsqueeze(1)
+        z_embed = self.latent_dense(z_embed).unsqueeze(1)
+        x = x + time_embed + z_embed
+
+        # Self-Attention
+        attn_output, _ = self.attn(x, x, x)
+        x = self.layernorm1(x + attn_output)
+
+        # Feed-Forward Network
+        ffn_output = self.ffn(x)
+        x = self.layernorm2(x + ffn_output)
+
+        return x
+
 ###############################################################################
 # Helper Functions
 ###############################################################################
@@ -627,6 +730,42 @@ class Upsample(nn.Module):
         else:
             return ret_val[:, :, :-1, :-1]
 
+
+class ReconstructionLayer(nn.Module):
+    def __init__(self, patch_size, embed_dim, out_channels):
+        super().__init__()
+        self.reconstruct = nn.ConvTranspose2d(embed_dim, out_channels, kernel_size=patch_size, stride=patch_size)
+
+    def forward(self, x):
+        # Reshape tokens to 2D feature map
+        B, num_patches, embed_dim = x.shape
+        H = W = int(num_patches ** 0.5)
+        x = x.permute(0, 2, 1).view(B, embed_dim, H, W)
+        return self.reconstruct(x)
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, num_patches, embed_dim):
+        super().__init__()
+        self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
+
+    def forward(self, x):
+        return x + self.pos_embed
+
+
+class PatchEmbedding(nn.Module):
+    def __init__(self, img_size, patch_size, in_channels, embed_dim):
+        super().__init__()
+        self.num_patches = (img_size // patch_size) ** 2
+        self.patch_size = patch_size
+
+        self.proj = nn.Conv2d(in_channels, embed_dim, kernel_size=patch_size, stride=patch_size)
+
+    def forward(self, x):
+        # Convert image to patches
+        x = self.proj(x)  # [B, embed_dim, H/patch_size, W/patch_size]
+        x = x.flatten(2).transpose(1, 2)  # [B, num_patches, embed_dim]
+        return x
 
 def get_pad_layer(pad_type):
     if(pad_type in ['refl', 'reflect']):

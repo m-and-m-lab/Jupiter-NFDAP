@@ -966,12 +966,11 @@ class ResnetGenerator(nn.Module):
                           Downsample(ngf * mult * 2)]
 
         mult = 2 ** n_downsampling
-        # for i in range(n_blocks):       # add ResNet blocks
+        for i in range(n_blocks):       # add ResNet blocks
 
-            # model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
-
-        for i in range(n_blocks):
-            model += [TransformerBlock(dim=ngf * mult, num_heads=8)]
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+        # for i in range(n_blocks):
+            # model += [TransformerBlock(dim=ngf * mult, num_heads=8)]
 
 
         for i in range(n_downsampling):  # add upsampling layers
