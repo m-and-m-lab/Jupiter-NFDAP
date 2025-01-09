@@ -966,9 +966,13 @@ class ResnetGenerator(nn.Module):
                           Downsample(ngf * mult * 2)]
 
         mult = 2 ** n_downsampling
-        for i in range(n_blocks):       # add ResNet blocks
+        # for i in range(n_blocks):       # add ResNet blocks
 
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+            # model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        for i in range(n_blocks):
+            model += [TransformerBlock(dim=ngf * mult, num_heads=8)]
+
 
         for i in range(n_downsampling):  # add upsampling layers
             mult = 2 ** (n_downsampling - i)
@@ -1017,6 +1021,35 @@ class ResnetGenerator(nn.Module):
             """Standard forward"""
             fake = self.model(input)
             return fake
+
+class TransformerBlock(nn.Module):
+    def __init__(self, dim, num_heads=8, mlp_ratio=4.0, dropout=0.1):
+        super(TransformerBlock, self).__init__()
+        
+        # Multi-head self-attention
+        self.attn = nn.MultiheadAttention(embed_dim=dim, num_heads=num_heads, dropout=dropout)
+        
+        # Feed-forward network (MLP)
+        self.mlp = nn.Sequential(
+            nn.Linear(dim, int(dim * mlp_ratio)),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(int(dim * mlp_ratio), dim),
+            nn.Dropout(dropout)
+        )
+        
+        # Layer normalization
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+    
+    def forward(self, x):
+        # Self-attention + residual connection
+        x = x + self.attn(self.norm1(x), self.norm1(x), self.norm1(x))[0]
+        
+        # Feed-forward + residual connection
+        x = x + self.mlp(self.norm2(x))
+        
+        return x
 
 
 class ResnetDecoder(nn.Module):
