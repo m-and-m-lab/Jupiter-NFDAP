@@ -12,6 +12,8 @@ if __name__ == '__main__':
     dataset2 = create_dataset(opt)
     dataset_size = len(dataset)    # get the number of images in the dataset.
 
+    #print(dataset_size)
+
     model = create_model(opt)      # create a model given opt.model and other options
     print('The number of training images = %d' % dataset_size)
 
