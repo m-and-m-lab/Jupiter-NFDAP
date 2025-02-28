@@ -55,7 +55,21 @@ if __name__ == '__main__':
             if total_iters % opt.display_freq == 0:   # display images on visdom and save images to a HTML file
                 save_result = total_iters % opt.update_html_freq == 0
                 model.compute_visuals()
-                visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
+
+                if opt.dataset_mode == "unaligned_npy":
+                    # Organize visuals to separate RGB from 5 channels and include UV and methane
+                    new_visuals = {}
+                    visuals = model.get_current_visuals()
+                    for k,v in visuals.items():
+                        BGR = v[:, :3, :, :]
+                        new_visuals[k] = torch.flip(BGR, dims=[1]) # converting BGR to RGB
+                    new_visuals['fake_B_UV'] = visuals['fake_B'][:, 3, :, :].unsqueeze(0) # Predicted UV
+                    new_visuals['fake_B_M'] = visuals['fake_B'][:, 4, :, :].unsqueeze(0) # Predicted Methane
+                    new_visuals['real_B_UV'] = visuals['real_B'][:, 3, :, :].unsqueeze(0)
+                    new_visuals['real_B_M'] = visuals['real_B'][:, 4, :, :].unsqueeze(0)
+                    visualizer.display_current_results(new_visuals, epoch, save_result)
+                else:
+                    visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
 
             if total_iters % opt.print_freq == 0:    # print training losses and save logging information to the disk
                 losses = model.get_current_losses()

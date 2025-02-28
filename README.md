@@ -24,6 +24,14 @@ Run the following command to start training for a preferred dataset
 python train.py --dataroot ./datasets/EZ_complete_data --name EZ_test \
 --mode sb --lambda_SB 1.0 --lambda_NCE 1.0 --gpu_ids 0
 ```
+
+To run the training using the npy files (that contain I/F) and predict the additional UV and Methane channels:
+```
+python train.py --dataroot ./datasets/hst2jvh_GRS_npy --name hst2jvh_GRS_SB_npy \
+--mode sb --lambda_SB 1.0 --lambda_NCE 1.0 --gpu_ids 0 --dataset_mode unaligned_npy \
+--phase train  --input_nc 5 --output_nc 5
+```
+
 Thre are several training parameters available in the codebase which you can change during training arguments. some of the important ones I have listed below - 
 ```
 --dataset_mode
@@ -63,6 +71,13 @@ Run the following command to test the model on the test dataset
 python test.py --dataroot [path-to-dataset] --name [experiment-name] --mode sb \
 --phase test --epoch [epoch-for-test] --eval --num_test [num-test-image] \
 --gpu_ids 0 --checkpoints_dir ./checkpoints
+```
+
+To run the testing using the npy files (that contain I/F) and save the predicted additional UV and Methane channels:
+```
+python test.py --dataroot ./datasets/hst2jvh_GRS_npy --name hst2jvh_GRS_SB_npy \
+--checkpoints_dir ./checkpoints --mode sb --eval --phase test --gpu_ids 0 \
+--dataset_mode unaligned_npy --input_nc 5 --output_nc 5
 ```
 
 The outputs will be saved in ```./results/[experiment-name]/```

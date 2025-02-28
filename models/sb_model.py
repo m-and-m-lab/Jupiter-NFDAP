@@ -178,6 +178,7 @@ class SBModel(BaseModel):
         self.time_idx = time_idx
         self.timestep     = times[time_idx]
         
+        """Sampling process (Generation stage)"""
         with torch.no_grad():
             self.netG.eval()
             for t in range(self.time_idx.int().item()+1):
@@ -198,7 +199,11 @@ class SBModel(BaseModel):
                 time     = times[time_idx]
                 z        = torch.randn(size=[self.real_A.shape[0],4*self.opt.ngf]).to(self.real_A.device)
                 Xt_12    = self.netG(Xt2, time_idx, z)
-                
+
+                #print("real A:", self.real_A.shape)
+                #print("real B:", self.real_B.shape)
+                #print("Xt:", Xt.shape)
+                #print("Xt_1:", Xt_1.shape)
                 
                 if self.opt.nce_idt:
                     XtB = self.real_B if (t == 0) else (1-inter) * XtB + inter * Xt_1B.detach() + (scale * tau).sqrt() * torch.randn_like(XtB).to(self.real_A.device)
@@ -228,9 +233,12 @@ class SBModel(BaseModel):
         self.fake = self.netG(self.realt,self.time_idx,z_in)
         self.fake_B2 =  self.netG(self.real_A_noisy2,self.time_idx,z_in2)
         self.fake_B = self.fake[:self.real_A.size(0)]
+        #print("fake_B:", self.fake_B.shape)
+
         if self.opt.nce_idt:
             self.idt_B = self.fake[self.real_A.size(0):]
-            
+        #print("idt_B:", self.idt_B.shape)
+
         if self.opt.phase == 'test':
             tau = self.opt.tau
             T = self.opt.num_timesteps
@@ -278,6 +286,8 @@ class SBModel(BaseModel):
         
         self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
         return self.loss_D
+    
+    
     def compute_E_loss(self):
         
         bs =  self.real_A.size(0)
@@ -290,6 +300,8 @@ class SBModel(BaseModel):
         self.loss_E = -self.netE(XtXt_1, self.time_idx, XtXt_1).mean() +temp + temp**2
         
         return self.loss_E
+
+
     def compute_G_loss(self):
         bs =  self.real_A.size(0)
         tau = self.opt.tau
