@@ -202,7 +202,8 @@ class SBModel(BaseModel):
         time_idx = (torch.randint(T, size=[1]).cuda() * torch.ones(size=[1]).cuda()).long()
         self.time_idx = time_idx
         self.timestep     = times[time_idx]
-
+        
+        """Sampling process (Generation stage)"""
         with torch.no_grad():
             self.netG.eval()
             for t in range(self.time_idx.int().item()+1):
@@ -253,9 +254,10 @@ class SBModel(BaseModel):
         self.fake = self.netG(self.realt,self.time_idx,z_in)
         self.fake_B2 =  self.netG(self.real_A_noisy2,self.time_idx,z_in2)
         self.fake_B = self.fake[:self.real_A.size(0)]
+        #print("fake_B:", self.fake_B.shape)
+
         if self.opt.nce_idt:
             self.idt_B = self.fake[self.real_A.size(0):]
-
         if self.opt.phase == 'test':
             tau = self.opt.tau
             T = self.opt.num_timesteps
@@ -331,6 +333,8 @@ class SBModel(BaseModel):
         self.loss_E = -self.netE(XtXt_1, self.time_idx, XtXt_1).mean() +temp + temp**2
 
         return self.loss_E
+
+
     def compute_G_loss(self):
         # TODO use D_high to train G
         bs =  self.real_A.size(0)

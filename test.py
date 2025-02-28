@@ -33,6 +33,8 @@ from models import create_model
 from util.visualizer import save_images
 from util import html
 import util.util as util
+import torch
+import numpy as np
 
 
 if __name__ == '__main__':
@@ -63,9 +65,40 @@ if __name__ == '__main__':
             break
         model.set_input(data,data2)  # unpack data from data loader
         model.test()           # run inference
+        
         visuals = model.get_current_visuals()  # get image results
+        #print(visuals.keys()) # ['real', 'fake_1', 'fake_2', 'fake_3', 'fake_4', 'fake_5']
+
         img_path = model.get_image_paths()     # get image paths
+        
+        if opt.dataset_mode == "unaligned_npy":
+            # Organize visuals to separate RGB from 5 channels and include UV and methane
+            new_visuals = {}
+            for k,v in visuals.items():
+                BGR = v[:, :3, :, :]
+                new_visuals[k] = torch.flip(BGR, dims=[1]) # converting BGR to RGB
+            new_visuals['fake_5_UV'] = visuals['fake_5'][:, 3, :, :].unsqueeze(0) # Predicted UV
+            new_visuals['fake_5_M'] = visuals['fake_5'][:, 4, :, :].unsqueeze(0) # Predicted Methane
+
+            # save npy file
+            #print(web_dir)
+            save_path = web_dir + "/npys/fake_5/" #+ img_path[0] +
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path)
+            npy_save_file = save_path + img_path[0].split('/')[-1]
+            fake_5 = util.tensor2im(visuals['fake_5'], imtype=np.float32) / 255.0
+            np.save(npy_save_file, fake_5) # B, G, R, UV, Methane
+
+            # change path to png from npy
+            part1 = os.path.join(*img_path[0].split('/')[:-1])
+            part2 = img_path[0].split('/')[-1].split('.')[0] + ".png"
+            img_path = [part1+"/"+part2]
+
+            save_images(webpage, new_visuals, img_path, width=opt.display_winsize)
+        else:
+            save_images(webpage, visuals, img_path, width=opt.display_winsize)
+        
         if i % 5 == 0:  # save images to an HTML file
             print('processing (%04d)-th image... %s' % (i, img_path))
-        save_images(webpage, visuals, img_path, width=opt.display_winsize)
+        
     webpage.save()  # save the HTML
