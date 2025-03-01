@@ -39,9 +39,14 @@ class UnalignedNPYDataset(BaseDataset):
 
         self.A_paths = sorted(make_dataset(self.dir_A, opt.max_dataset_size))   # load images from '/path/to/data/trainA'
         self.B_paths = sorted(make_dataset(self.dir_B, opt.max_dataset_size))    # load images from '/path/to/data/trainB'
+
+        ## Filter A and B based on given zones
+        if len(self.opt.zones)>0: # if no zones are given then don't filter
+            self.A_paths = self.filter_data_by_zones(self.A_paths)
+            self.B_paths = self.filter_data_by_zones(self.B_paths)
+
         self.A_size = len(self.A_paths)  # get the size of dataset A
         self.B_size = len(self.B_paths)  # get the size of dataset B
-        #print(self.A_paths)
 
         ## Sample fake UV and methane data for JunoCam (A) to account for the channel number difference to HST (B)
         ## For now a truncated normal distribution between (-1, 1)
@@ -52,7 +57,20 @@ class UnalignedNPYDataset(BaseDataset):
         #UV_methane_random = torch.randn(2, self.opt.crop_size, self.opt.crop_size)
         #UV_methane_random = torch.normal(mean=0, std=0.5, size=(2, self.opt.crop_size, self.opt.crop_size))
 
-        # ** Add option to filter the data based on zones/belts
+
+        # ** Add the architecture of the denseNorm for the generator
+        # ** Add the physics-informed loss
+        # ** Check whether it makes sense to add a cycleGAN objective
+
+
+    def filter_data_by_zones(self, paths):
+        filtered_paths = []
+        for i in range(len(paths)):
+            zone_path = paths[i].split('/')[-1].split('_')[0]
+            #print(zone_path)
+            if zone_path in self.opt.zones:
+                filtered_paths.append(paths[i]) 
+        return filtered_paths
 
 
     def __getitem__(self, index):
