@@ -52,8 +52,11 @@ class BaseOptions():
         parser.add_argument('--tau', type=float, default=0.01, help='Entropy parameter')
         parser.add_argument('--no_antialias', action='store_true', help='if specified, use stride=2 convs instead of antialiased-downsampling (sad)')
         parser.add_argument('--no_antialias_up', action='store_true', help='if specified, use [upconv(learned filter)] instead of [upconv(hard-coded [1,3,3,1] filter), conv]')
+        
         # dataset parameters
         parser.add_argument('--dataset_mode', type=str, default='unaligned', help='chooses how datasets are loaded. [unaligned | unaligned_npy | aligned | single | colorization]')
+        # Options for zones: "GRS", "EZ", "NEB", "NTrZ", "SEB", "STrZ" --- For "NTB", "STB" we don't have data yet
+        parser.add_argument('--zones', nargs='*', default=[], help='Which zones to use for training with the unaligned_npy. If no argument is given then use all zones')
         parser.add_argument('--direction', type=str, default='AtoB', help='AtoB or BtoA')
         parser.add_argument('--serial_batches', action='store_true', help='if true, takes images in order to make batches, otherwise takes them randomly')
         parser.add_argument('--num_threads', default=4, type=int, help='# threads for loading data')
