@@ -37,6 +37,24 @@ import torch
 import numpy as np
 
 
+def get_new_visuals(visuals):
+    # Returns visuals only for npy dataset
+    # Organize visuals to separate RGB from 5 channels and include UV and methane
+    new_visuals = {}
+    if opt.input_nc == 2:
+        new_visuals['A_calibrated_JVH'] = torch.flip(data['A_orig'], dims=[1]) # converting BGR to RGB
+        new_visuals['fake_5_UV'] = visuals['fake_5'][:,0,:,:].unsqueeze(0)
+        new_visuals['fake_5_M'] = visuals['fake_5'][:,1,:,:].unsqueeze(0)
+    else:
+        for k,v in visuals.items():
+            BGR = v[:, :3, :, :]
+            new_visuals[k] = torch.flip(BGR, dims=[1]) # converting BGR to RGB
+        if opt.input_nc == 5:
+            new_visuals['fake_5_UV'] = visuals['fake_5'][:, 3, :, :].unsqueeze(0) # Predicted UV
+            new_visuals['fake_5_M'] = visuals['fake_5'][:, 4, :, :].unsqueeze(0) # Predicted Methane
+    return new_visuals
+
+
 if __name__ == '__main__':
     opt = TestOptions().parse()  # get test options
     # hard-code some parameters for test
@@ -68,26 +86,21 @@ if __name__ == '__main__':
         
         visuals = model.get_current_visuals()  # get image results
         #print(visuals.keys()) # ['real', 'fake_1', 'fake_2', 'fake_3', 'fake_4', 'fake_5']
-
-        img_path = model.get_image_paths()     # get image paths
         
         if opt.dataset_mode == "unaligned_npy":
-            # Organize visuals to separate RGB from 5 channels and include UV and methane
-            new_visuals = {}
-            for k,v in visuals.items():
-                BGR = v[:, :3, :, :]
-                new_visuals[k] = torch.flip(BGR, dims=[1]) # converting BGR to RGB
-            new_visuals['fake_5_UV'] = visuals['fake_5'][:, 3, :, :].unsqueeze(0) # Predicted UV
-            new_visuals['fake_5_M'] = visuals['fake_5'][:, 4, :, :].unsqueeze(0) # Predicted Methane
+            
+            new_visuals = get_new_visuals(visuals)
 
-            # save npy file
+            img_path = model.get_image_paths() # get image paths
+
+            # Save npy file
             #print(web_dir)
             save_path = web_dir + "/npys/fake_5/" #+ img_path[0] +
             if not os.path.isdir(save_path):
                 os.makedirs(save_path)
             npy_save_file = save_path + img_path[0].split('/')[-1]
             fake_5 = util.tensor2im(visuals['fake_5'], imtype=np.float32) / 255.0
-            np.save(npy_save_file, fake_5) # B, G, R, UV, Methane
+            np.save(npy_save_file, fake_5) # H x W x C -- B, G, R, UV, Methane
 
             # change path to png from npy
             part1 = os.path.join(*img_path[0].split('/')[:-1])

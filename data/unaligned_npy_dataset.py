@@ -48,12 +48,13 @@ class UnalignedNPYDataset(BaseDataset):
         self.A_size = len(self.A_paths)  # get the size of dataset A
         self.B_size = len(self.B_paths)  # get the size of dataset B
 
-        ## Sample fake UV and methane data for JunoCam (A) to account for the channel number difference to HST (B)
+        ## If input channels is 5, sample fake UV and methane data for JunoCam (A) to account for the channel number difference to HST (B)
         ## For now a truncated normal distribution between (-1, 1)
         ## These should be sampled only once at the beginning of training for all A training images
         # ** Not sure how this affects the losses -- PatchNCE only uses within negative patches so it should be unaffected
-        tensor_empty = torch.zeros((self.A_size, 2, self.opt.crop_size, self.opt.crop_size))
-        self.UV_methane_random = self.trunc_normal(tensor_empty, mean=0, std=1, a=-1, b=1)
+        if self.opt.input_nc == 5:
+            tensor_empty = torch.zeros((self.A_size, 2, self.opt.crop_size, self.opt.crop_size))
+            self.UV_methane_random = self.trunc_normal(tensor_empty, mean=0, std=1, a=-1, b=1)
         #UV_methane_random = torch.randn(2, self.opt.crop_size, self.opt.crop_size)
         #UV_methane_random = torch.normal(mean=0, std=0.5, size=(2, self.opt.crop_size, self.opt.crop_size))
 
@@ -93,6 +94,10 @@ class UnalignedNPYDataset(BaseDataset):
             index_B = random.randint(0, self.B_size - 1)
         B_path = self.B_paths[index_B]
 
+        ## ** Hardcode the path for now
+        #A_path = "./datasets/junocam_calibration_GRS_TINY_npy/trainA/GRS_PJ_18_jc_000098.npy"
+        #B_path = "./datasets/junocam_calibration_GRS_TINY_npy/trainB/GRS_cycle_23_rot_B_hst_000166.npy"
+
         # npy data are already normalized between 0...1        
         A_img = np.load(A_path)
         B_img = np.load(B_path)
@@ -100,6 +105,18 @@ class UnalignedNPYDataset(BaseDataset):
         A_img = torch.tensor(A_img)
         A_img = torch.permute(A_img, (2, 0, 1)) # n_channels x H x W
         B_img = torch.tensor(B_img) # already in: n_channels x H x W
+
+        ## Do correction for the Methane band
+        # GRS is supposed to have the highest values in Methane band and its values are between 0.12-0.18
+        # So probably a 5.0 multiplier is fine
+        B_img[4,:,:] = B_img[4,:,:] * 5.0
+        # import matplotlib.pyplot as plt
+        # fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6), dpi=100)
+        # ax1.imshow(B_img[0,:,:], aspect='equal', cmap='gray')
+        # ax1.set_title("UV")
+        # ax2.imshow(B_img[4,:,:], aspect='equal', cmap='gray')
+        # ax2.set_title("Methane")
+        # plt.show()
 
         # Apply image transformation
         # For CUT/FastCUT mode, if in finetuning phase (learning rate is decaying),
@@ -113,17 +130,39 @@ class UnalignedNPYDataset(BaseDataset):
         B = transform(B_img)
 
         # Custom function to normalize inputs of arbitrary number of channels to [-1, 1]
-        A = normalize_npy(A) # 3 x H x W
-        B = normalize_npy(B) # 5 x H x W
+        A = normalize_npy(A) # 3 x H x W -- B, G, R
+        B = normalize_npy(B) # 5 x H x W -- UV, B, G, R, Methane 
 
-        # Becareful of the ordering of the channels for B (HST) 
-        # Currently UV, B, G, R, Methane 
-        # Ordered to match the order of the channels for A: (B, G, R, UV, Methane) --UV Methane not actually in A
-        order =  torch.tensor([1, 2, 3, 0, 4])
+        # Order channels of B to match the ones from A: (B, G, R, UV, Methane) -- regardless of the input_nc option
+        order = torch.tensor([1, 2, 3, 0, 4])
         B = B[order, :, :]
 
-        ## Append the fake UV, Methane to A
-        A = torch.cat((A, self.UV_methane_random[index_A, :, :, :]), dim=0) # 5 x H x W
+        if self.opt.input_nc == 5:
+            # Append the fake UV, Methane to A
+            A = torch.cat((A, self.UV_methane_random[index_A, :, :, :]), dim=0) # 5 x H x W
+        
+        elif self.opt.input_nc == 3:
+            # Remove UV, Methane from HST
+            B = B[:3,:,:]
+
+        elif self.opt.input_nc == 2:
+            # This is used to predict UV, Methane from JunoCam color (during a two-stage prediction strategy)
+            # Keep only UV, Methane from HST
+            B_orig = B.clone()
+            B = B[3:,:,:]
+            A_orig = A.clone()
+            # Use R, B channels for predicting UV,Methane
+            A = A[torch.tensor([0,2]),:,:]
+            # Randomly choose which JunoCam color channels to include in a 2-channel input of A
+            #idx = torch.randperm(3)
+            #A = A[idx,:,:]
+            #A = A[:2,:,:]
+        else:
+            raise Exception('Chosen input number of channels not supported for this dataset!')
+
+
+        if self.opt.input_nc == 2:
+            return {'A': A, 'B': B, 'A_paths': A_path, 'B_paths': B_path, 'A_orig': A_orig, 'B_orig': B_orig}
 
         return {'A': A, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
 
