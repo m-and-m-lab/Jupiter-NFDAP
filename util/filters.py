@@ -1,6 +1,14 @@
 import torch
 
 
+def get_filter(ftype='gaussian'):
+    filters = {
+        'gaussian': gaussian_low_pass_filter_2d,
+        'ideal': ideal_low_pass_filter_2d,
+    }
+
+    return filters[ftype]
+
 def gaussian_low_pass_filter_2d(shape, d_s=0.25):
     """
     Computes a 2D Gaussian low-pass filter mask.
