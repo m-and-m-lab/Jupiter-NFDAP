@@ -28,7 +28,9 @@ class SBModel(BaseModel):
         parser.add_argument('--flip_equivariance',
                             type=util.str2bool, nargs='?', const=True, default=False,
                             help="Enforce flip-equivariance as additional regularization. It's used by FastCUT, but not CUT")
-        
+        parser.add_argument('--highfreq_discriminator',
+                            type=util.str2bool, nargs='?', const=True, default=True,
+                            help="Enable discriminator on higher frequences of source and generated images")
         parser.set_defaults(pool_size=0)  # no image pooling
 
         opt, _ = parser.parse_known_args()
@@ -75,6 +77,7 @@ class SBModel(BaseModel):
 
         if self.isTrain:
             self.netD = networks.define_D(opt.output_nc, opt.ndf, opt.netD, opt.n_layers_D, opt.normD, opt.init_type, opt.init_gain, opt.no_antialias, self.gpu_ids, opt)
+            self.netD_high = networks.define_D(opt.output_nc, opt.ndf, opt.netD, opt.n_layers_D, opt.normD, opt.init_type, opt.init_gain, opt.no_antialias, self.gpu_ids, opt)
             self.netE = networks.define_D(opt.output_nc*4, opt.ndf, opt.netD, opt.n_layers_D, opt.normD,
                                           opt.init_type, opt.init_gain, opt.no_antialias, self.gpu_ids, opt)
             # define loss functions
@@ -87,11 +90,14 @@ class SBModel(BaseModel):
             self.criterionIdt = torch.nn.L1Loss().to(self.device)
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
+            if self.opt.highfreq_discriminator:
+                self.optimizer_D_high = torch.optim.Adam(self.netD_high.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizer_E = torch.optim.Adam(self.netE.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
+            self.optimizers.append(self.optimizer_D_high)
             self.optimizers.append(self.optimizer_E)
-            
+
     def data_dependent_initialize(self, data,data2):
         """
         The feature network netF is defined in terms of the shape of the intermediate, extracted
@@ -105,10 +111,11 @@ class SBModel(BaseModel):
         self.real_B = self.real_B[:bs_per_gpu]
         self.forward()                     # compute fake images: G(A)
         if self.opt.isTrain:
-            
+
             self.compute_G_loss().backward()
             self.compute_D_loss().backward()
-            self.compute_E_loss().backward()  
+            #TODO check if d_low needded here
+            self.compute_E_loss().backward()
             if self.opt.lambda_NCE > 0.0:
                 self.optimizer_F = torch.optim.Adam(self.netF.parameters(), lr=self.opt.lr, betas=(self.opt.beta1, self.opt.beta2))
                 self.optimizers.append(self.optimizer_F)
@@ -119,6 +126,7 @@ class SBModel(BaseModel):
         self.netG.train()
         self.netE.train()
         self.netD.train()
+        self.netD_high.train()
         self.netF.train()
         # update D
         self.set_requires_grad(self.netD, True)
@@ -126,17 +134,26 @@ class SBModel(BaseModel):
         self.loss_D = self.compute_D_loss()
         self.loss_D.backward()
         self.optimizer_D.step()
-        
+
         self.set_requires_grad(self.netE, True)
         self.optimizer_E.zero_grad()
         self.loss_E = self.compute_E_loss()
         self.loss_E.backward()
         self.optimizer_E.step()
-        
+
+        # update D_high
+        if self.opt.highfreq_discriminator:
+            self.set_requires_grad(self.netD_high, True)
+            self.optimizer_D_high.zero_grad()
+            self.loss_D_high = self.compute_D_high_loss()
+            self.loss_D_high.backward()
+            self.optimizer_D_high.step()
+            self.set_requires_grad(self.netD_high, False)
+
         # update G
         self.set_requires_grad(self.netD, False)
         self.set_requires_grad(self.netE, False)
-        
+
         self.optimizer_G.zero_grad()
         if self.opt.netF == 'mlp_sample':
             self.optimizer_F.zero_grad()
@@ -144,8 +161,8 @@ class SBModel(BaseModel):
         self.loss_G.backward()
         self.optimizer_G.step()
         if self.opt.netF == 'mlp_sample':
-            self.optimizer_F.step()       
-        
+            self.optimizer_F.step()
+
     def set_input(self, input,input2=None):
 
         """Unpack input data from the dataloader and perform necessary pre-processing steps.
@@ -159,11 +176,11 @@ class SBModel(BaseModel):
         if input2 is not None:
             self.real_A2 = input2['A' if AtoB else 'B'].to(self.device)
             self.real_B2 = input2['B' if AtoB else 'A'].to(self.device)
-        
+
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
-        
+
         tau = self.opt.tau
         T = self.opt.num_timesteps
         incs = np.array([0] + [1/(i+1) for i in range(T-1)])
@@ -177,11 +194,11 @@ class SBModel(BaseModel):
         time_idx = (torch.randint(T, size=[1]).cuda() * torch.ones(size=[1]).cuda()).long()
         self.time_idx = time_idx
         self.timestep     = times[time_idx]
-        
+
         with torch.no_grad():
             self.netG.eval()
             for t in range(self.time_idx.int().item()+1):
-                
+
                 if t > 0:
                     delta = times[t] - times[t-1]
                     denom = times[-1] - times[t-1]
@@ -192,14 +209,14 @@ class SBModel(BaseModel):
                 time     = times[time_idx]
                 z        = torch.randn(size=[self.real_A.shape[0],4*self.opt.ngf]).to(self.real_A.device)
                 Xt_1     = self.netG(Xt, time_idx, z)
-                
+
                 Xt2       = self.real_A2 if (t == 0) else (1-inter) * Xt2 + inter * Xt_12.detach() + (scale * tau).sqrt() * torch.randn_like(Xt2).to(self.real_A.device)
                 time_idx = (t * torch.ones(size=[self.real_A.shape[0]]).to(self.real_A.device)).long()
                 time     = times[time_idx]
                 z        = torch.randn(size=[self.real_A.shape[0],4*self.opt.ngf]).to(self.real_A.device)
                 Xt_12    = self.netG(Xt2, time_idx, z)
-                
-                
+
+
                 if self.opt.nce_idt:
                     XtB = self.real_B if (t == 0) else (1-inter) * XtB + inter * Xt_1B.detach() + (scale * tau).sqrt() * torch.randn_like(XtB).to(self.real_A.device)
                     time_idx = (t * torch.ones(size=[self.real_A.shape[0]]).to(self.real_A.device)).long()
@@ -210,27 +227,27 @@ class SBModel(BaseModel):
                 self.XtB = XtB.detach()
             self.real_A_noisy = Xt.detach()
             self.real_A_noisy2 = Xt2.detach()
-                      
-        
+
+
         z_in    = torch.randn(size=[2*bs,4*self.opt.ngf]).to(self.real_A.device)
         z_in2    = torch.randn(size=[bs,4*self.opt.ngf]).to(self.real_A.device)
         """Run forward pass"""
         self.real = torch.cat((self.real_A, self.real_B), dim=0) if self.opt.nce_idt and self.opt.isTrain else self.real_A
-        
+
         self.realt = torch.cat((self.real_A_noisy, self.XtB), dim=0) if self.opt.nce_idt and self.opt.isTrain else self.real_A_noisy
-        
+
         if self.opt.flip_equivariance:
             self.flipped_for_equivariance = self.opt.isTrain and (np.random.random() < 0.5)
             if self.flipped_for_equivariance:
                 self.real = torch.flip(self.real, [3])
                 self.realt = torch.flip(self.realt, [3])
-        
+
         self.fake = self.netG(self.realt,self.time_idx,z_in)
         self.fake_B2 =  self.netG(self.real_A_noisy2,self.time_idx,z_in2)
         self.fake_B = self.fake[:self.real_A.size(0)]
         if self.opt.nce_idt:
             self.idt_B = self.fake[self.real_A.size(0):]
-            
+
         if self.opt.phase == 'test':
             tau = self.opt.tau
             T = self.opt.num_timesteps
@@ -242,14 +259,14 @@ class SBModel(BaseModel):
             times = torch.tensor(times).float().cuda()
             self.times = times
             bs =  self.real.size(0)
-            time_idx = (torch.randint(T, size=[1]).cuda() * torch.ones(size=[1]).cuda()).long()
+            time_idx = (torch  .randint(T, size=[1]).cuda() * torch.ones(size=[1]).cuda()).long()
             self.time_idx = time_idx
             self.timestep     = times[time_idx]
             visuals = []
             with torch.no_grad():
                 self.netG.eval()
                 for t in range(self.opt.num_timesteps):
-                    
+
                     if t > 0:
                         delta = times[t] - times[t-1]
                         denom = times[-1] - times[t-1]
@@ -260,44 +277,59 @@ class SBModel(BaseModel):
                     time     = times[time_idx]
                     z        = torch.randn(size=[self.real_A.shape[0],4*self.opt.ngf]).to(self.real_A.device)
                     Xt_1     = self.netG(Xt, time_idx, z)
-                    
+
                     setattr(self, "fake_"+str(t+1), Xt_1)
-                    
+
     def compute_D_loss(self):
         """Calculate GAN loss for the discriminator"""
         bs =  self.real_A.size(0)
-        
+
         fake = self.fake_B.detach()
         std = torch.rand(size=[1]).item() * self.opt.std
-        
+
         pred_fake = self.netD(fake,self.time_idx)
         self.loss_D_fake = self.criterionGAN(pred_fake, False).mean()
         self.pred_real = self.netD(self.real_B,self.time_idx)
         loss_D_real = self.criterionGAN(self.pred_real, True)
         self.loss_D_real = loss_D_real.mean()
-        
+
         self.loss_D = (self.loss_D_fake + self.loss_D_real) * 0.5
         return self.loss_D
-    def compute_E_loss(self):
-        
+    def compute_D_high_loss(self):
+        """Calculate GAN loss for the discriminator in the higher frequencies"""
         bs =  self.real_A.size(0)
-        
+
+        fake = self.highpass_img(self.fake_B.detach())
+        std = torch.rand(size=[1]).item() * self.opt.std
+
+        pred_fake = self.netD_high(fake,self.time_idx)
+        self.loss_D_high_fake = self.criterionGAN(pred_fake, False).mean()
+        self.pred_real_high = self.netD_high(self.highpass_img(self.real_B),self.time_idx)
+        loss_D_high_real = self.criterionGAN(self.pred_real_high, True)
+        self.loss_D_high_real = loss_D_high_real.mean()
+
+        self.loss_D_high = (self.loss_D_high_fake + self.loss_D_high_real) * 0.5
+        return self.loss_D_high
+    def compute_E_loss(self):
+
+        bs =  self.real_A.size(0)
+
         """Calculate GAN loss for the discriminator"""
-        
+
         XtXt_1 = torch.cat([self.real_A_noisy,self.fake_B.detach()], dim=1)
         XtXt_2 = torch.cat([self.real_A_noisy2,self.fake_B2.detach()], dim=1)
         temp = torch.logsumexp(self.netE(XtXt_1, self.time_idx, XtXt_2).reshape(-1), dim=0).mean()
         self.loss_E = -self.netE(XtXt_1, self.time_idx, XtXt_1).mean() +temp + temp**2
-        
+
         return self.loss_E
     def compute_G_loss(self):
         bs =  self.real_A.size(0)
         tau = self.opt.tau
-        
+
         """Calculate GAN and NCE loss for the generator"""
         fake = self.fake_B
         std = torch.rand(size=[1]).item() * self.opt.std
-        
+
         if self.opt.lambda_GAN > 0.0:
             pred_fake = self.netD(fake,self.time_idx)
             self.loss_G_GAN = self.criterionGAN(pred_fake, True).mean() * self.opt.lambda_GAN
@@ -307,7 +339,7 @@ class SBModel(BaseModel):
         if self.opt.lambda_SB > 0.0:
             XtXt_1 = torch.cat([self.real_A_noisy, self.fake_B], dim=1)
             XtXt_2 = torch.cat([self.real_A_noisy2, self.fake_B2], dim=1)
-            
+
             bs = self.opt.batch_size
 
             ET_XY    = self.netE(XtXt_1, self.time_idx, XtXt_1).mean() - torch.logsumexp(self.netE(XtXt_1, self.time_idx, XtXt_2).reshape(-1), dim=0)
@@ -323,7 +355,7 @@ class SBModel(BaseModel):
             loss_NCE_both = (self.loss_NCE + self.loss_NCE_Y) * 0.5
         else:
             loss_NCE_both = self.loss_NCE
-        
+
         self.loss_G = self.loss_G_GAN + self.opt.lambda_SB*self.loss_SB + self.opt.lambda_NCE*loss_NCE_both
         return self.loss_G
 
@@ -335,7 +367,7 @@ class SBModel(BaseModel):
 
         if self.opt.flip_equivariance and self.flipped_for_equivariance:
             feat_q = [torch.flip(fq, [3]) for fq in feat_q]
-        
+
         feat_k = self.netG(src, self.time_idx*0,z,self.nce_layers, encode_only=True)
         feat_k_pool, sample_ids = self.netF(feat_k, self.opt.num_patches, None)
         feat_q_pool, _ = self.netF(feat_q, self.opt.num_patches, sample_ids)
@@ -346,3 +378,16 @@ class SBModel(BaseModel):
             total_nce_loss += loss.mean()
 
         return total_nce_loss / n_layers
+
+    def highpass_img(self, img, freq_r):
+        """
+        Applies a high-pass filter to an image in the frequency domain.
+
+        Args:
+            img (torch.Tensor): The input image as a PyTorch tensor.
+            freq_r (float): The radius of the low-frequency region to be suppressed.
+
+        Returns:
+            torch.Tensor: The high-pass filtered image.
+        """
+        ...
