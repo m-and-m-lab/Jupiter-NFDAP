@@ -4,6 +4,8 @@ from .base_model import BaseModel
 from . import networks
 from .patchnce import PatchNCELoss
 import util.util as util
+from util.filters import get_filter
+from util.fourier import fft_per_channel, ifft_per_channel
 
 class SBModel(BaseModel):
     @staticmethod
@@ -381,15 +383,26 @@ class SBModel(BaseModel):
 
         return total_nce_loss / n_layers
 
-    def highpass_img(self, img, freq_r):
+    def highpass_img(self, imgs):
         """
         Applies a high-pass filter to an image in the frequency domain.
 
         Args:
-            img (torch.Tensor): The input image as a PyTorch tensor.
+            imgs (torch.Tensor): The input image as a PyTorch tensor, shape (B, C, H, W)
             freq_r (float): The radius of the low-frequency region to be suppressed.
 
         Returns:
             torch.Tensor: The high-pass filtered image.
         """
-        ...
+        _, C, H, W = imgs.shape
+        fft = fft_per_channel(imgs)
+
+        # TODO seperate high and low pass
+        filter_mask = get_filter(self.opt.filter_type)(shape=(H, W), d_s=self.opt.freq_r)
+        high_mask = (1 - filter_mask)
+
+        freq_high = fft * high_mask.reshape(-1, 1, H, W)
+
+        img_high = ifft_per_channel(freq_high)
+
+        return img_high
