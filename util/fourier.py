@@ -12,11 +12,8 @@ def fft_per_channel(image):
     Returns:
         torch.Tensor: Complex-valued FFT of the image, shape (C, H, W) or (B, C, H, W), shifted.
     """
-    if image.ndim == 3:
-        fft_image = torch.fft.fft2(image, dim=(-2, -1))
-        fft_shifted = torch.fft.fftshift(fft_image, dim=(-2, -1))
-    elif image.ndim == 4:
-        fft_image = torch.fft.fft2(image, dim=(-2, -1))
+    if image.ndim == 4 or image.ndim == 3:
+        fft_image = torch.fft.fftn(image, dim=(-2, -1))
         fft_shifted = torch.fft.fftshift(fft_image, dim=(-2, -1))
     else:
         raise ValueError("Input image must have 3 or 4 dimensions (C, H, W) or (B, C, H, W).")
@@ -34,12 +31,9 @@ def ifft_per_channel(fft_shifted):
     Returns:
         torch.Tensor: Real-valued inverse FFT of the image, shape (C, H, W) or (B, C, H, W).
     """
-    if fft_shifted.ndim == 3:
+    if fft_shifted.ndim == 3 or fft_shifted.ndim == 4:
         ifft_image = torch.fft.ifftshift(fft_shifted, dim=(-2, -1))
-        ifft_result = torch.fft.ifft2(ifft_image, dim=(-2, -1)).real
-    elif fft_shifted.ndim == 4:
-        ifft_image = torch.fft.ifftshift(fft_shifted, dim=(-2, -1))
-        ifft_result = torch.fft.ifft2(ifft_image, dim=(-2, -1)).real
+        ifft_result = torch.fft.ifftn(ifft_image, dim=(-2, -1))
     else:
         raise ValueError("Input fft image must have 3 or 4 dimensions (C, H, W) or (B, C, H, W).")
 
