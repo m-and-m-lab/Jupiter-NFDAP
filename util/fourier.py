@@ -83,6 +83,7 @@ class ImageFiltering:
 
         # TODO seperate high and low pass
         filter_mask = get_filter(self.filter_type)(shape=(H, W), d_s=self.freq_r)
+        filter_mask = filter_mask.to(fft.device)
         high_mask = (1 - filter_mask)
 
         freq_high = fft * high_mask.reshape(-1, 1, H, W)
