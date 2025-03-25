@@ -19,7 +19,7 @@ def gaussian_low_pass_filter_2d(shape, d_s=0.25):
         d_s: Normalized cutoff frequency for spatial dimensions (0.0-1.0).
 
     Returns:
-        A 2D NumPy array representing the Gaussian low-pass filter mask.
+        A 2D Torch array representing the Gaussian low-pass filter mask.
         Returns None if the input shape is invalid.
     """
 
@@ -47,6 +47,10 @@ def ideal_low_pass_filter_2d(shape, d_s=0.25):
     Args:
         shape: shape of the filter (H, W)
         d_s: normalized stop frequency for spatial dimensions (0.0-1.0)
+
+    Returns:
+        A 2D Torch array representing the Gaussian low-pass filter mask.
+        Returns None if the input shape is invalid.
     """
     if not isinstance(shape, tuple) or len(shape) != 2:
         print("Error: Shape must be a tuple of length 2 (H, W).")
