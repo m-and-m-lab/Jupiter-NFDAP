@@ -14,7 +14,6 @@ class SBModel(BaseModel):
         parser.add_argument('--mode', type=str, default="sb", choices='(FastCUT, fastcut, sb)')
 
         parser.add_argument('--lambda_GAN', type=float, default=1.0, help='weight for GAN loss：GAN(G(X))')
-        parser.add_argument('--lambda_GAN_high', type=float, default=0.1, help='weight for GAN loss on high frequency components')
         parser.add_argument('--lambda_NCE', type=float, default=1.0, help='weight for NCE loss: NCE(G(X), X)')
         parser.add_argument('--lambda_SB', type=float, default=0.1, help='weight for SB loss')
         parser.add_argument('--nce_idt', type=util.str2bool, nargs='?', const=True, default=False, help='use NCE loss for identity mapping: NCE(G(Y), Y))')
@@ -30,11 +29,14 @@ class SBModel(BaseModel):
         parser.add_argument('--flip_equivariance',
                             type=util.str2bool, nargs='?', const=True, default=False,
                             help="Enforce flip-equivariance as additional regularization. It's used by FastCUT, but not CUT")
+
+        # Args for high frequency discriminator
         parser.add_argument('--highfreq_discriminator',
                             type=util.str2bool, nargs='?', const=True, default=True,
                             help="Enable discriminator on higher frequences of source and generated images")
         parser.add_argument('--filter_type', type=str, default='gaussian', choices=['gaussian', 'ideal'], help='Type of filterring to seperate fourier frequencies')
         parser.add_arguments('--freq_r', type=float, default=0.2, help='Ratio of frequencies in low pass')
+        parser.add_argument('--lambda_GAN_high', type=float, default=0.1, help='weight for GAN loss on high frequency components')
         parser.set_defaults(pool_size=0)  # no image pooling
 
         opt, _ = parser.parse_known_args()
@@ -345,7 +347,7 @@ class SBModel(BaseModel):
             self.loss_G_GAN = 0.0
 
         # Calculate GAN loss for high frequency components
-        if self.opt.lambda_GAN_high > 0.0:
+        if self.opt.highfreq_discriminator and self.opt.lambda_GAN_high > 0.0:
             pred_fake_high = self.netD_high(self.img_filter.highpass_img(fake),self.time_idx)
             self.loss_G_GAN_high = self.criterionGAN(pred_fake_high, True).mean() * self.opt.lambda_GAN_high
         else:
