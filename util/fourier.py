@@ -67,13 +67,14 @@ class ImageFiltering:
         self.filter_type = filter_type
         self.freq_r = freq_r
 
-    def highpass_img(self, imgs, get_img=False):
+    def highpass_img(self, imgs, get_real=True, get_img=False):
         """
         Applies a high-pass filter to an image in the frequency domain.
 
         Args:
             imgs (torch.Tensor): The input image as a PyTorch tensor, shape (B, C, H, W)
             get_img (bool): If set to True, returns a ready-to-plot batch of images (uint8, 0-255).
+            get_real (bool): If set to True, returns only real part of inverse transform
 
         Returns:
             torch.Tensor: The high-pass filtered image.
@@ -90,4 +91,6 @@ class ImageFiltering:
 
         img_high = ifft_per_channel(freq_high, get_img=get_img)
 
+        if get_real:
+            return img_high.real
         return img_high
