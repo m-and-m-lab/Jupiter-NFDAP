@@ -118,7 +118,7 @@ class SBModel(BaseModel):
 
             self.compute_G_loss().backward()
             self.compute_D_loss().backward()
-            #TODO check if d_low needded here
+            self.compute_D_high_loss().backward()
             self.compute_E_loss().backward()
             if self.opt.lambda_NCE > 0.0:
                 self.optimizer_F = torch.optim.Adam(self.netF.parameters(), lr=self.opt.lr, betas=(self.opt.beta1, self.opt.beta2))
@@ -139,12 +139,6 @@ class SBModel(BaseModel):
         self.loss_D.backward()
         self.optimizer_D.step()
 
-        self.set_requires_grad(self.netE, True)
-        self.optimizer_E.zero_grad()
-        self.loss_E = self.compute_E_loss()
-        self.loss_E.backward()
-        self.optimizer_E.step()
-
         # update D_high
         if self.opt.highfreq_discriminator:
             self.set_requires_grad(self.netD_high, True)
@@ -152,11 +146,18 @@ class SBModel(BaseModel):
             self.loss_D_high = self.compute_D_high_loss()
             self.loss_D_high.backward()
             self.optimizer_D_high.step()
-            self.set_requires_grad(self.netD_high, False)
+
+        self.set_requires_grad(self.netE, True)
+        self.optimizer_E.zero_grad()
+        self.loss_E = self.compute_E_loss()
+        self.loss_E.backward()
+        self.optimizer_E.step()
 
         # update G
         self.set_requires_grad(self.netD, False)
         self.set_requires_grad(self.netE, False)
+        if self.opt.highfreq_discriminator:
+            self.set_requires_grad(self.netD_high, False)
 
         self.optimizer_G.zero_grad()
         if self.opt.netF == 'mlp_sample':
@@ -328,6 +329,7 @@ class SBModel(BaseModel):
 
         return self.loss_E
     def compute_G_loss(self):
+        # TODO use D_high to train G
         bs =  self.real_A.size(0)
         tau = self.opt.tau
 
