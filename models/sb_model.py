@@ -14,6 +14,7 @@ class SBModel(BaseModel):
         parser.add_argument('--mode', type=str, default="sb", choices='(FastCUT, fastcut, sb)')
 
         parser.add_argument('--lambda_GAN', type=float, default=1.0, help='weight for GAN loss：GAN(G(X))')
+        parser.add_argument('--lambda_GAN_high', type=float, default=0.1, help='weight for GAN loss on high frequency components')
         parser.add_argument('--lambda_NCE', type=float, default=1.0, help='weight for NCE loss: NCE(G(X), X)')
         parser.add_argument('--lambda_SB', type=float, default=0.1, help='weight for SB loss')
         parser.add_argument('--nce_idt', type=util.str2bool, nargs='?', const=True, default=False, help='use NCE loss for identity mapping: NCE(G(Y), Y))')
@@ -342,6 +343,13 @@ class SBModel(BaseModel):
             self.loss_G_GAN = self.criterionGAN(pred_fake, True).mean() * self.opt.lambda_GAN
         else:
             self.loss_G_GAN = 0.0
+
+        # Calculate GAN loss for high frequency components
+        if self.opt.lambda_GAN_high > 0.0:
+            pred_fake_high = self.netD_high(self.img_filter.highpass_img(fake),self.time_idx)
+            self.loss_G_GAN_high = self.criterionGAN(pred_fake_high, True).mean() * self.opt.lambda_GAN_high
+        else:
+            self.loss_G_GAN_high = 0.0
         self.loss_SB = 0
         if self.opt.lambda_SB > 0.0:
             XtXt_1 = torch.cat([self.real_A_noisy, self.fake_B], dim=1)
@@ -363,7 +371,7 @@ class SBModel(BaseModel):
         else:
             loss_NCE_both = self.loss_NCE
 
-        self.loss_G = self.loss_G_GAN + self.opt.lambda_SB*self.loss_SB + self.opt.lambda_NCE*loss_NCE_both
+        self.loss_G = self.loss_G_GAN + self.opt.lambda_SB*self.loss_SB + self.opt.lambda_NCE*loss_NCE_both + self.loss_G_GAN_high
         return self.loss_G
 
 
