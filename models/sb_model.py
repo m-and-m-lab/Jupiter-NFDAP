@@ -4,8 +4,7 @@ from .base_model import BaseModel
 from . import networks
 from .patchnce import PatchNCELoss
 import util.util as util
-from util.filters import get_filter
-from util.fourier import fft_per_channel, ifft_per_channel
+from util.fourier import fft_per_channel, ifft_per_channel, ImageFiltering
 
 class SBModel(BaseModel):
     @staticmethod
@@ -101,6 +100,7 @@ class SBModel(BaseModel):
             self.optimizers.append(self.optimizer_D)
             self.optimizers.append(self.optimizer_D_high)
             self.optimizers.append(self.optimizer_E)
+        self.img_filter = ImageFiltering(filter_type=self.opt.filter_type, freq_r=self.opt.freq_r)
 
     def data_dependent_initialize(self, data,data2):
         """
@@ -303,12 +303,13 @@ class SBModel(BaseModel):
         """Calculate GAN loss for the discriminator in the higher frequencies"""
         bs =  self.real_A.size(0)
 
-        fake = self.highpass_img(self.fake_B.detach())
+        fake = self.img_filter.highpass_img(self.fake_B.detach())
+        fake = self.img_filter.highpass_img(self.fake_B.detach())
         std = torch.rand(size=[1]).item() * self.opt.std
 
         pred_fake = self.netD_high(fake,self.time_idx)
         self.loss_D_high_fake = self.criterionGAN(pred_fake, False).mean()
-        self.pred_real_high = self.netD_high(self.highpass_img(self.real_B),self.time_idx)
+        self.pred_real_high = self.netD_high(self.img_filter.highpass_img(self.real_B),self.time_idx)
         loss_D_high_real = self.criterionGAN(self.pred_real_high, True)
         self.loss_D_high_real = loss_D_high_real.mean()
 
@@ -383,26 +384,3 @@ class SBModel(BaseModel):
 
         return total_nce_loss / n_layers
 
-    def highpass_img(self, imgs):
-        """
-        Applies a high-pass filter to an image in the frequency domain.
-
-        Args:
-            imgs (torch.Tensor): The input image as a PyTorch tensor, shape (B, C, H, W)
-            freq_r (float): The radius of the low-frequency region to be suppressed.
-
-        Returns:
-            torch.Tensor: The high-pass filtered image.
-        """
-        _, C, H, W = imgs.shape
-        fft = fft_per_channel(imgs)
-
-        # TODO seperate high and low pass
-        filter_mask = get_filter(self.opt.filter_type)(shape=(H, W), d_s=self.opt.freq_r)
-        high_mask = (1 - filter_mask)
-
-        freq_high = fft * high_mask.reshape(-1, 1, H, W)
-
-        img_high = ifft_per_channel(freq_high)
-
-        return img_high
