@@ -35,7 +35,7 @@ class SBModel(BaseModel):
                             type=util.str2bool, nargs='?', const=True, default=True,
                             help="Enable discriminator on higher frequences of source and generated images")
         parser.add_argument('--filter_type', type=str, default='gaussian', choices=['gaussian', 'ideal'], help='Type of filterring to seperate fourier frequencies')
-        parser.add_arguments('--freq_r', type=float, default=0.2, help='Ratio of frequencies in low pass')
+        parser.add_argument('--freq_r', type=float, default=0.2, help='Ratio of frequencies in low pass')
         parser.add_argument('--lambda_GAN_high', type=float, default=0.1, help='weight for GAN loss on high frequency components')
         parser.set_defaults(pool_size=0)  # no image pooling
 
