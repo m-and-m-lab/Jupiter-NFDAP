@@ -6,6 +6,7 @@ import random
 import util.util as util
 import numpy as np
 import torch
+from torchvision.transforms.functional import gaussian_blur
 
 
 class UnalignedDataset(BaseDataset):
@@ -70,6 +71,11 @@ class UnalignedDataset(BaseDataset):
         transform = get_transform(modified_opt)
         A = transform(A_img)
         B = transform(B_img)
+
+        if self.opt.blur_A:
+            A = gaussian_blur(A, kernel_size=[5,5], sigma=(1, 5))
+        elif self.opt.blur_B:
+            B = gaussian_blur(B, kernel_size=[5,5], sigma=(1, 5))
 
         return {'A': A, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
 

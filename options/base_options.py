@@ -52,7 +52,7 @@ class BaseOptions():
         parser.add_argument('--tau', type=float, default=0.01, help='Entropy parameter')
         parser.add_argument('--no_antialias', action='store_true', help='if specified, use stride=2 convs instead of antialiased-downsampling (sad)')
         parser.add_argument('--no_antialias_up', action='store_true', help='if specified, use [upconv(learned filter)] instead of [upconv(hard-coded [1,3,3,1] filter), conv]')
-        
+
         # dataset parameters
         parser.add_argument('--dataset_mode', type=str, default='unaligned', help='chooses how datasets are loaded. [unaligned | unaligned_npy | aligned | single | colorization]')
         # Options for zones: "GRS", "EZ", "NEB", "NTrZ", "SEB", "STrZ" --- For "NTB", "STB" we don't have data yet
@@ -78,6 +78,10 @@ class BaseOptions():
         parser.add_argument('--stylegan2_G_num_downsampling',
                             default=1, type=int,
                             help='Number of downsampling layers used by StyleGAN2Generator')
+
+        # parameters for toy dataset
+        parser.add_argument('--blur_A', action='store_true', help='Blur source data (A)')
+        parser.add_argument('--blur_B', action='store_true', help='Blur source data (B)')
 
         self.initialized = True
         return parser
