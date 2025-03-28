@@ -80,8 +80,8 @@ class BaseOptions():
                             help='Number of downsampling layers used by StyleGAN2Generator')
 
         # parameters for toy dataset
-        parser.add_argument('--blur_A', action='store_true', help='Blur source data (A)')
-        parser.add_argument('--blur_B', action='store_true', help='Blur source data (B)')
+        parser.add_argument('--blur_A', action='store_true', default=False, help='Blur source data (A)')
+        parser.add_argument('--blur_B', action='store_true', default=False, help='Blur source data (B)')
 
         self.initialized = True
         return parser
